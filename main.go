@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -190,6 +191,43 @@ func commandOpen(sqlite3 string, project string, projectDir string, projectName 
 	return eprjPath
 }
 
+func startEasyEda(eprjPath string) {
+	if runtime.GOOS == "windows" {
+		cmd := exec.Command("cmd", fmt.Sprintf("/C start %v", eprjPath))
+		log.Println("Start", eprjPath)
+		if *flagVerbose {
+			log.Println("Run", cmd.Args)
+		}
+		if err := cmd.Start(); err != nil {
+			log.Panic(err)
+		}
+	} else if runtime.GOOS == "linux" {
+		if _, err := os.Stat("/opt/easyeda-pro/easyeda-pro"); err == nil {
+			cmd := exec.Command("/opt/easyeda-pro/easyeda-pro", eprjPath)
+			log.Println("Start", eprjPath)
+			if *flagVerbose {
+				log.Println("Run", cmd.Args)
+			}
+			if err := cmd.Start(); err != nil {
+				log.Panic(err)
+			}
+		} else if _, err := os.Stat("/opt/lceda-pro/lceda-pro"); err == nil {
+			cmd := exec.Command("/opt/lceda-pro/lceda-pro", eprjPath)
+			log.Println("Start", eprjPath)
+			if *flagVerbose {
+				log.Println("Run", cmd.Args)
+			}
+			if err := cmd.Start(); err != nil {
+				log.Panic(err)
+			}
+		} else {
+			log.Panic("EasyEDA / LCEDA is not found in /opt")
+		}
+	} else {
+		log.Panic("Unsupported OS", runtime.GOOS)
+	}
+}
+
 func main() {
 	flag.BoolVar(flagVerbose, "v", false, "same as -verbose")
 	flag.Usage = func() {
@@ -237,9 +275,9 @@ func main() {
 	}
 	projectDir := filepath.Dir(project)
 	projectName := filepath.Base(project)
-	projectName, _ = strings.CutSuffix(projectName, ".sql")
-	projectName, _ = strings.CutSuffix(projectName, ".eprj")
-	projectName, _ = strings.CutPrefix(projectName, ".")
+	projectName = strings.TrimSuffix(projectName, ".sql")
+	projectName = strings.TrimSuffix(projectName, ".eprj")
+	projectName = strings.TrimPrefix(projectName, ".")
 	sqlite3, created, err := prebuilt.ExtractSqlite3(projectDir)
 	if created {
 		if *flagVerbose {
@@ -272,14 +310,7 @@ func main() {
 	} else if command == "open" {
 		eprjPath := commandOpen(sqlite3, project, projectDir, projectName)
 		if !*flagNoStart {
-			cmd := exec.Command("cmd", fmt.Sprintf("/C start %v", eprjPath))
-			log.Println("Start", eprjPath)
-			if *flagVerbose {
-				log.Println("Run", cmd.Args)
-			}
-			if err := cmd.Start(); err != nil {
-				log.Panic(err)
-			}
+			startEasyEda(eprjPath)
 		}
 	} else if command == "sync" {
 		isInitEprjSql, err := commandSave(sqlite3, project, projectDir, projectName)
@@ -294,14 +325,7 @@ func main() {
 		}
 		eprjPath := commandOpen(sqlite3, project, projectDir, projectName)
 		if !*flagNoStart {
-			cmd := exec.Command("cmd", fmt.Sprintf("/C start %v", eprjPath))
-			log.Println("Start", eprjPath)
-			if *flagVerbose {
-				log.Println("Run", cmd.Args)
-			}
-			if err := cmd.Start(); err != nil {
-				log.Panic(err)
-			}
+			startEasyEda(eprjPath)
 		}
 	}
 }
