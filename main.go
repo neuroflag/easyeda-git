@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -130,13 +131,21 @@ func commandSave(sqlite3 string, project string, projectDir string, projectName 
 				fmt.Sprintf(`UPDATE "documents" SET "dataStr" = '' WHERE uuid = '%s'`, documentUuid))
 		}
 	}
-	dump := runSqlite3(sqlite3, tmpSqlite3Path, ".dump")
+	schema := runSqlite3(sqlite3, tmpSqlite3Path, ".schema --nosys")
+	schemaSqlPath := filepath.Join(projectDir, projectName+".schema.eprj.sql")
+	dump := runSqlite3(sqlite3, tmpSqlite3Path, ".dump --data-only")
 	eprjSqlPath := filepath.Join(projectDir, projectName+".eprj.sql")
 	isInitEprjSql := false
 	if _, err = os.Stat(eprjSqlPath); err != nil && os.IsNotExist(err) {
 		isInitEprjSql = true
 	}
-	if err := os.WriteFile(eprjSqlPath, dump, 0644); err != nil {
+	if err := os.WriteFile(schemaSqlPath, schema, 0644); err != nil {
+		log.Panic(err)
+	}
+	dataLines := strings.Split(string(dump), "\n")
+	sort.Strings(dataLines)
+	sortedData := strings.Join(dataLines, "\n")
+	if err := os.WriteFile(eprjSqlPath, []byte(sortedData), 0644); err != nil {
 		log.Panic(err)
 	}
 	return isInitEprjSql, nil
@@ -144,6 +153,7 @@ func commandSave(sqlite3 string, project string, projectDir string, projectName 
 
 func commandOpen(sqlite3 string, project string, projectDir string, projectName string) string {
 	eprjSqlPath := ""
+	schemaSqlPath := ""
 	if strings.HasSuffix(project, ".eprj.sql") {
 		eprjSqlPath = project
 		_, err := os.Stat(eprjSqlPath)
@@ -152,8 +162,10 @@ func commandOpen(sqlite3 string, project string, projectDir string, projectName 
 				log.Panic(err)
 			}
 		}
+		schemaSqlPath = strings.TrimSuffix(eprjSqlPath, ".eprj.sql") + ".schema.eprj.sql"
 	} else {
 		eprjSqlPath = filepath.Join(projectDir, projectName+".eprj.sql")
+		schemaSqlPath = filepath.Join(projectDir, projectName+".schema.eprj.sql")
 	}
 	eprjPath := filepath.Join(projectDir, projectName+".eprj")
 	_, err := os.Stat(eprjPath)
@@ -174,7 +186,11 @@ func commandOpen(sqlite3 string, project string, projectDir string, projectName 
 			log.Panic(err)
 		}
 	}
-	log.Println("Load", eprjSqlPath)
+	log.Println("Load", schemaSqlPath, eprjSqlPath)
+	_, err = os.Stat(schemaSqlPath)
+	if err == nil || !os.IsNotExist(err) {
+		runSqlite3(sqlite3, eprjPath, fmt.Sprintf(`.read %q`, schemaSqlPath))
+	}
 	runSqlite3(sqlite3, eprjPath, fmt.Sprintf(`.read %q`, eprjSqlPath))
 	projectDirFiles, err := os.ReadDir(projectDir)
 	if err != nil {
@@ -297,15 +313,9 @@ func main() {
 		log.Println("Found sqlite3 at", sqlite3)
 	}
 	if command == "save" {
-		isInitEprjSql, err := commandSave(sqlite3, project, projectDir, projectName)
+		_, err := commandSave(sqlite3, project, projectDir, projectName)
 		if err != nil {
 			log.Panic(err)
-		}
-		if isInitEprjSql {
-			eprjPath := commandOpen(sqlite3, project, projectDir, projectName)
-			if _, err := commandSave(sqlite3, eprjPath, projectDir, projectName); err != nil {
-				log.Panic(err)
-			}
 		}
 	} else if command == "open" {
 		eprjPath := commandOpen(sqlite3, project, projectDir, projectName)
@@ -313,15 +323,9 @@ func main() {
 			startEasyEda(eprjPath)
 		}
 	} else if command == "sync" {
-		isInitEprjSql, err := commandSave(sqlite3, project, projectDir, projectName)
+		_, err := commandSave(sqlite3, project, projectDir, projectName)
 		if err != nil && !os.IsNotExist(err) {
 			log.Panic(err)
-		}
-		if isInitEprjSql {
-			eprjPath := commandOpen(sqlite3, project, projectDir, projectName)
-			if _, err := commandSave(sqlite3, eprjPath, projectDir, projectName); err != nil {
-				log.Panic(err)
-			}
 		}
 		eprjPath := commandOpen(sqlite3, project, projectDir, projectName)
 		if !*flagNoStart {
