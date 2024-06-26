@@ -120,9 +120,12 @@ func commandSave(sqlite3 string, project string, projectDir string, projectName 
 				fmt.Sprintf(`SELECT "dataStr" FROM "documents" WHERE uuid = '%s'`, documentUuid))
 			dataStr := bytes.TrimRight(dataStrOutput, " \r\n")
 			updateStatement := bytes.Join([][]byte{
-				[]byte(`UPDATE "documents" SET "dataStr" = '`),
+				[]byte(`UPDATE "documents" SET "dataStr" =
+'`),
 				dataStr,
-				[]byte(fmt.Sprintf(`' WHERE "uuid" = '%s';`, documentUuid)),
+				[]byte(fmt.Sprintf(`'
+WHERE "uuid" = '%s';
+`, documentUuid)),
 			}, []byte{})
 			if err := os.WriteFile(documentSqlPath, updateStatement, 0644); err != nil {
 				log.Panic(err)
